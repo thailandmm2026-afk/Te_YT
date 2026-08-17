@@ -46,19 +46,20 @@ def get_base_ydl_opts():
     opts = {
         "quiet": True,
         "no_warnings": True,
-        # 403 Forbidden နှင့် Bot Check အဓိက ကျော်ရန် Client များ ပြောင်းခြင်း
         "extractor_args": {
             "youtube": {
-                "player_client": ["android", "ios", "mweb"]
+                # web / tv_embedded / mweb စသည်ဖြင့် အစားထိုးစမ်းကြည့်နိုင်ပါသည်
+                "player_client": ["ios", "android", "mweb"]
             }
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
         }
     }
     if os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
     return opts
+
 
 
 # ──────────────────────────────────────────────
