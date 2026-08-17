@@ -21,13 +21,16 @@ API_ID    = int(os.environ.get("API_ID", 31606811))
 API_HASH  = os.environ.get("API_HASH", "36e6d64e83ee00422c8ba535a60eaa99")
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "8783779072:AAHz1ACcEgyYg0ZB41aH_MgWxVIKQJcZgiA")
 
+# Cookies File Path
+COOKIES_FILE = "cookies.txt"
+
 if not all([API_ID, API_HASH, BOT_TOKEN]):
     raise ValueError("API_ID, API_HASH and BOT_TOKEN are required")
 
 OUTPUT_FOLDER = "downloads"
 os.makedirs(OUTPUT_FOLDER, exist_ok=True)
 
-CREDIT = "@YourCredit"   # ပြောင်းချင်ရင် ပြောင်းပါ
+CREDIT = "@KMM_MOD1"   # ပြောင်းချင်ရင် ပြောင်းပါ
 
 app = Client(
     "yt_bot",
@@ -35,6 +38,21 @@ app = Client(
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
 )
+
+# ──────────────────────────────────────────────
+# Helper function for ydl options
+# ──────────────────────────────────────────────
+def get_base_ydl_opts():
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "http_headers": {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        }
+    }
+    if os.path.exists(COOKIES_FILE):
+        opts["cookiefile"] = COOKIES_FILE
+    return opts
 
 # ──────────────────────────────────────────────
 # Utilities (Facebook bot style)
@@ -96,7 +114,6 @@ def make_progress_hook(status_msg: Message, loop: asyncio.AbstractEventLoop, lab
         downloaded = d.get("downloaded_bytes", 0)
         speed = d.get("_speed_str", "N/A").strip()
         eta = d.get("_eta_str", "N/A").strip()
-        percent = d.get("_percent_str", "0%").strip()
 
         bar = progress_bar(downloaded, total) if total else "██████████"
         text = (
@@ -178,19 +195,12 @@ async def url_handler(_, message: Message):
     status = await message.reply_text(f"⏳ ဗီဒီယိုအချက်အလက် ရယူနေပါသည်...\n\n— {CREDIT}")
 
     try:
-        ydl_opts = {"quiet": True, "no_warnings": True}
+        ydl_opts = get_base_ydl_opts()
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
         title = info.get("title", "Unknown")
         duration = info.get("duration") or 0
-
-        # Save to message for callback
-        message._yt_data = {
-            "url": url,
-            "title": title,
-            "duration": duration,
-        }
 
         h, rem = divmod(duration, 3600)
         m, s = divmod(rem, 60)
@@ -235,18 +245,18 @@ async def callback_handler(_, query: CallbackQuery):
 
     try:
         if quality == "audio":
-            ydl_opts = {
+            ydl_opts = get_base_ydl_opts()
+            ydl_opts.update({
                 "format": "bestaudio/best",
                 "outtmpl": out_template,
-                "quiet": True,
-                "no_warnings": True,
                 "progress_hooks": [make_progress_hook(status, loop, "Audio Downloading")],
                 "postprocessors": [{
                     "key": "FFmpegExtractAudio",
                     "preferredcodec": "mp3",
                     "preferredquality": "192",
                 }],
-            }
+            })
+            
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 final_path = ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp3"
@@ -260,10 +270,10 @@ async def callback_handler(_, query: CallbackQuery):
             )
 
         else:
-            # Video quality selection (နာရီကျော်ဆို 480p အလိုအလျောက်)
             duration = 0
             try:
-                with yt_dlp.YoutubeDL({"quiet": True}) as ydl:
+                ydl_opts_pre = get_base_ydl_opts()
+                with yt_dlp.YoutubeDL(ydl_opts_pre) as ydl:
                     info_pre = ydl.extract_info(url, download=False)
                     duration = info_pre.get("duration") or 0
             except Exception:
@@ -279,15 +289,14 @@ async def callback_handler(_, query: CallbackQuery):
                 fmt = "best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]/best"
                 label = "Best Video"
 
-            ydl_opts = {
+            ydl_opts = get_base_ydl_opts()
+            ydl_opts.update({
                 "format": fmt,
                 "outtmpl": out_template,
-                "quiet": True,
-                "no_warnings": True,
                 "progress_hooks": [make_progress_hook(status, loop, f"{label} Downloading")],
                 "concurrent_fragment_downloads": 5,
                 "http_chunk_size": 10485760,
-            }
+            })
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
