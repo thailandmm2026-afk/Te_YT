@@ -19,7 +19,7 @@ import yt_dlp
 # ──────────────────────────────────────────────
 API_ID    = int(os.environ.get("API_ID", 31606811))
 API_HASH  = os.environ.get("API_HASH", "36e6d64e83ee00422c8ba535a60eaa99")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "55")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8783779072:AAHKmDP0wqEJaR37J-eGwL5H_FLvG9xHFIw")
 
 # Cookies File Path
 COOKIES_FILE = "cookies.txt"
@@ -187,11 +187,17 @@ def get_video_metadata(video_path: str) -> tuple[int, int, int]:
 @app.on_message(filters.command("start"))
 async def start_handler(_, message: Message):
     await message.reply_text(
-        "🎬 **YouTube Downloader Bot**\n\n"
-        "YouTube လင့်ခ်ပို့ပါ။\n"
-        "Video / Audio ရွေးနိုင်ပါတယ်။\n\n"
+        "👋 **YT Video Downloader Bot မှ ကြိုဆိုပါတယ်!**\n\n"
+        "📥 **အသုံးပြုနည်း -**\n"
+        "မည်သည့် YouTube ဗီဒီယို Link ကိုမဆို ပေးပို့လိုက်ပါ — Bot မှ မြန်ဆန်စွာ ဒေါင်းလုဒ်ဆွဲပြီး ပြန်လည် ပေးပို့ပေးပါမည်။\n\n"
+        "⚡ **အင်္ဂါရပ်များ -**\n"
+        "• ဒေါင်းလုဒ်ပြုလုပ်ရာတွင် အလွန်မြန်ဆန်ခြင်း\n"
+        "• HD / SD ရုပ်ထွက် Quality ရရှိနိုင်ခြင်း\n"
+        "• ၁၀၀% အခမဲ့ အသုံးပြုနိုင်ခြင်း\n\n"
+        "Video / Audio ကြိုက်နှစ်သက်ရာ ရွေးချယ်နိုင်ပါသည်။\n\n"
         f"— {CREDIT}"
     )
+
 
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def url_handler(_, message: Message):
