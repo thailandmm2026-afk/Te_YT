@@ -1,3 +1,4 @@
 pyrogram==2.0.106
 tgcrypto
 yt-dlp
+git+https://github.com/yt-dlp/yt-dlp.git
