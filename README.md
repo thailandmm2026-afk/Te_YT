@@ -25,22 +25,10 @@ Credits: `@UseMasterUpdate`
 
 | Variable    | Description                                  |
 |-------------|-----------------------------------------------|
-| `API_ID`    | Telegram API ID from my.telegram.org          |
-| `API_HASH`  | Telegram API hash from my.telegram.org        |
-| `BOT_TOKEN` | Bot token from [@BotFather](https://t.me/BotFather) |
-
-Copy `.env.example` to `.env` and fill in your values for local testing.
-
-## Running Locally
-
-```bash
+| `API_ID`    | Telegram API ID from my.telegrae` to `.env` and fill in your values for local tes
+#nning Lo
 pip install -r requirements.txt
-# Make sure ffmpeg is installed and on your PATH
-export API_ID=1234567
-export API_HASH=your_api_hash
-export BOT_TOKEN=your_bot_token
-python bot.py
-```
+#
 
 ## Deployment
 
