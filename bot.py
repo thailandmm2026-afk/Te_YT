@@ -169,7 +169,7 @@ async def start_handler(_, message: Message):
         f"— {CREDIT}"
     )
 
-@app.on_message(filters.text & \~filters.command(["start", "help"]))
+@app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def url_handler(_, message: Message):
     url = extract_yt_url(message.text or "")
     if not url:
