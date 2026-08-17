@@ -19,7 +19,7 @@ import yt_dlp
 # ──────────────────────────────────────────────
 API_ID    = int(os.environ.get("API_ID", 31606811))
 API_HASH  = os.environ.get("API_HASH", "36e6d64e83ee00422c8ba535a60eaa99")
-BOT_TOKEN = os.environ.get("BOT_TOKEN", "8783779072:AAHz1ACcEgyYg0ZB41aH_MgWxVIKQJcZgiA")
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 
 # Cookies File Path
 COOKIES_FILE = "cookies.txt"
