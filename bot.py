@@ -46,16 +46,17 @@ def get_base_ydl_opts():
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "js_runtimes": {"node": None},
-        "remote_components": ["ejs:github"],
+        "nocheckcertificate": True,
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "mweb", "tv"]
+                # android / ios / tv ကို အရင်သုံးပြီး web ကို fallback အဖြစ်ထား
+                "player_client": ["android", "ios", "tv", "web"]
             }
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        }
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+            "Accept-Language": "en-US,en;q=0.9",
+        },
     }
     if os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
@@ -111,7 +112,7 @@ def make_progress_hook(status_msg: Message, loop: asyncio.AbstractEventLoop, lab
     last = [0.0]
 
     def hook(d):
-        if d["status"] != "downloading":
+        if not isinstance(d, dict) or d.get("status") != "downloading":
             return
         now = time.time()
         if now - last[0] < 2.5:
@@ -119,9 +120,17 @@ def make_progress_hook(status_msg: Message, loop: asyncio.AbstractEventLoop, lab
         last[0] = now
 
         total = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
-        downloaded = d.get("downloaded_bytes", 0)
-        speed = d.get("_speed_str", "N/A").strip()
-        eta = d.get("_eta_str", "N/A").strip()
+        downloaded = d.get("downloaded_bytes") or 0
+        speed = d.get("_speed_str") or "N/A"
+        eta = d.get("_eta_str") or "N/A"
+        if not isinstance(speed, str):
+            speed = "N/A"
+        else:
+            speed = speed.strip()
+        if not isinstance(eta, str):
+            eta = "N/A"
+        else:
+            eta = eta.strip()
 
         bar = progress_bar(downloaded, total) if total else "██████████"
         text = (
@@ -254,7 +263,8 @@ async def url_handler(_, message: Message):
         )
 
     except Exception as e:
-        await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
+        err_msg = f"{type(e).__name__}: {e}"
+        await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
 
 
 
@@ -292,9 +302,9 @@ async def callback_handler(_, query: CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 
-                # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ထဲက data ကိုယူပါ
+                # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
                 if info and "entries" in info:
-                    info = info["entries"][0]
+                    info = next((e for e in info["entries"] if e is not None), None)
 
                 # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
                 if not info:
@@ -339,9 +349,9 @@ async def callback_handler(_, query: CallbackQuery):
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 
-                # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ထဲက data ကိုယူပါ
+                # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
                 if info and "entries" in info:
-                    info = info["entries"][0]
+                    info = next((e for e in info["entries"] if e is not None), None)
 
                 # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
                 if not info:
@@ -386,7 +396,8 @@ async def callback_handler(_, query: CallbackQuery):
         await status.delete()
 
     except Exception as e:
-        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
+        err_msg = f"{type(e).__name__}: {e}"
+        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
 
 
 # ──────────────────────────────────────────────
