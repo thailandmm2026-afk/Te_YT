@@ -47,6 +47,9 @@ def get_base_ydl_opts():
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
+        "socket_timeout": 30,
+        "retries": 3,
+        "fragment_retries": 3,
         # mp4 ကို ဦးစားပေး
         "format_sort": ["res", "ext:mp4:m4a", "codec:h264:aac", "size"],
         "http_headers": {
@@ -55,11 +58,22 @@ def get_base_ydl_opts():
         },
     }
     # cookies ကို USE_COOKIES=1 ထားမှသာ သုံးမယ်
-    # (cookies ဟောင်း/expired ဖြစ်နေရင် "format is not available" error တက်တတ်)
     use_cookies = os.environ.get("USE_COOKIES", "0").strip() in ("1", "true", "yes")
     if use_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
         opts["cookiefile"] = COOKIES_FILE
     return opts
+
+
+def _download_sync(ydl_opts: dict, url: str):
+    """Blocking yt-dlp download — thread pool ထဲမှာ ခေါ်သုံးရန်"""
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=True)
+        if info and "entries" in info:
+            info = next((e for e in info["entries"] if e is not None), None)
+        if not info:
+            return None, None
+        path = ydl.prepare_filename(info)
+        return info, path
 
 
 # ──────────────────────────────────────────────
@@ -208,6 +222,17 @@ async def start_handler(_, message: Message):
     )
 
 
+def _extract_info_sync(url: str):
+    """Blocking extract_info — thread pool ထဲမှာ ခေါ်သုံးရန်"""
+    ydl_opts = get_base_ydl_opts()
+    ydl_opts["noplaylist"] = True
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        info = ydl.extract_info(url, download=False)
+    if info and "entries" in info and info["entries"]:
+        info = next((e for e in info["entries"] if e is not None), None)
+    return info
+
+
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
 async def url_handler(_, message: Message):
     url = extract_yt_url(message.text or "")
@@ -217,20 +242,11 @@ async def url_handler(_, message: Message):
     status = await message.reply_text(f"⏳ ဗီဒီယိုအချက်အလက် ရယူနေပါသည်...\n\n— {CREDIT}")
 
     try:
-        ydl_opts = get_base_ydl_opts()
-        # Playlist ဖြစ်နေရင် ပထမဆုံး 1 ပုဒ်ကိုပဲ ယူရန် noplaylist ထည့်ပေးပါ
-        ydl_opts["noplaylist"] = True
-
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-
-        if not info:
-            await status.edit_text(f"❌ အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
-            return
-
-        # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
-        if "entries" in info and info["entries"]:
-            info = next((e for e in info["entries"] if e is not None), None)
+        loop = asyncio.get_running_loop()
+        info = await asyncio.wait_for(
+            loop.run_in_executor(None, _extract_info_sync, url),
+            timeout=60,
+        )
 
         if not info:
             await status.edit_text(f"❌ အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
@@ -261,6 +277,8 @@ async def url_handler(_, message: Message):
             reply_markup=InlineKeyboardMarkup(buttons)
         )
 
+    except asyncio.TimeoutError:
+        await status.edit_text(f"❌ အချက်အလက် ရယူရာတွင် အချိန်ကျော်လွန်သွားပါပြီ။\nပြန်ကြိုးစားကြည့်ပါ။\n\n— {CREDIT}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {e}"
         await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
@@ -277,7 +295,7 @@ async def callback_handler(_, query: CallbackQuery):
         return
 
     status = query.message
-    await safe_edit(status, f"⏳ ဒေါင်းလုဒ် စတင်နေပါသည်...\n\n— {CREDIT}")
+    await safe_edit(status, f"⏳ အချက်အလက် ရယူနေပါသည်...\n\n— {CREDIT}")
 
     loop = asyncio.get_running_loop()
     safe_title = re.sub(r'[^\w\s\-_\.]', '', str(time.time()))[:20]
@@ -298,29 +316,38 @@ async def callback_handler(_, query: CallbackQuery):
                 }],
             })
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                
-                # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
-                if info and "entries" in info:
-                    info = next((e for e in info["entries"] if e is not None), None)
+            await safe_edit(status, f"📥 Audio ဒေါင်းလုဒ် စတင်နေပါသည်...\n\n— {CREDIT}")
 
-                # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
-                if not info:
-                    await safe_edit(status, f"❌ Video အချက်အလက်များ မရရှိပါ။\n\n— {CREDIT}")
-                    return
+            # Thread pool မှာ run လုပ် → bot hang မဖြစ်အောင်
+            info, path = await asyncio.wait_for(
+                loop.run_in_executor(None, _download_sync, ydl_opts, url),
+                timeout=600,  # 10 မိနစ်
+            )
 
-                final_path = ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp3"
+            if not info:
+                await safe_edit(status, f"❌ Audio အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
+                return
+
+            final_path = (path or "").rsplit(".", 1)[0] + ".mp3"
+            if not os.path.exists(final_path):
+                # postprocessor က တခြားနာမည်နဲ့ ထားနိုင်
+                for f in os.listdir(OUTPUT_FOLDER):
+                    if f.startswith(safe_title) and f.endswith(".mp3"):
+                        final_path = os.path.join(OUTPUT_FOLDER, f)
+                        break
+
+            if not os.path.exists(final_path):
+                await safe_edit(status, f"❌ Audio ဖိုင် မတွေ့ပါ။\n\n— {CREDIT}")
+                return
 
             await safe_edit(status, f"📤 Telegram သို့ ပို့နေပါသည်...\n\n— {CREDIT}")
             await status.reply_audio(
                 audio=final_path,
                 caption=f"✅ {info.get('title', 'Audio')}\n\n— {CREDIT}",
                 title=info.get("title", "Audio"),
-                performer="YouTube"
+                performer="YouTube",
             )
 
-            # Cleanup
             try:
                 if os.path.exists(final_path):
                     os.remove(final_path)
@@ -328,8 +355,6 @@ async def callback_handler(_, query: CallbackQuery):
                 pass
 
         else:
-            # Video download — format selector ကို ပြောင်းလဲအောင် ပြင်ထား
-            # (ext=mp4 တင်းကျပ်စွာ မသတ်မှတ်ဘဲ fallback များများ ထည့်)
             format_map = {
                 "best": "bestvideo*+bestaudio/best/bestvideo+bestaudio",
                 "720": "bestvideo*[height<=720]+bestaudio/best[height<=720]/bestvideo*+bestaudio/best",
@@ -346,29 +371,38 @@ async def callback_handler(_, query: CallbackQuery):
                 "progress_hooks": [make_progress_hook(status, loop, f"{quality.upper()} Downloading")],
             })
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                
-                # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
-                if info and "entries" in info:
-                    info = next((e for e in info["entries"] if e is not None), None)
+            await safe_edit(status, f"📥 {quality.upper()} ဒေါင်းလုဒ် စတင်နေပါသည်...\nခဏစောင့်ပါ...\n\n— {CREDIT}")
 
-                # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
-                if not info:
-                    await safe_edit(status, f"❌ Video အချက်အလက်များ မရရှိပါ။\n\n— {CREDIT}")
-                    return
+            # Thread pool မှာ run လုပ် → bot hang မဖြစ်အောင်
+            info, path = await asyncio.wait_for(
+                loop.run_in_executor(None, _download_sync, ydl_opts, url),
+                timeout=600,  # 10 မိနစ်
+            )
 
-                final_path = ydl.prepare_filename(info)
-                # ensure .mp4 extension after merge
-                if not final_path.endswith(".mp4"):
-                    base = final_path.rsplit(".", 1)[0]
-                    if os.path.exists(base + ".mp4"):
-                        final_path = base + ".mp4"
+            if not info:
+                await safe_edit(status, f"❌ Video အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
+                return
+
+            final_path = path or ""
+            if not final_path.endswith(".mp4"):
+                base = final_path.rsplit(".", 1)[0]
+                if os.path.exists(base + ".mp4"):
+                    final_path = base + ".mp4"
+
+            if not os.path.exists(final_path):
+                # merge ပြီး နာမည်ပြောင်းသွားနိုင်
+                for f in os.listdir(OUTPUT_FOLDER):
+                    if f.startswith(safe_title) and f.endswith(".mp4"):
+                        final_path = os.path.join(OUTPUT_FOLDER, f)
+                        break
+
+            if not os.path.exists(final_path):
+                await safe_edit(status, f"❌ Video ဖိုင် မတွေ့ပါ။\n\n— {CREDIT}")
+                return
 
             title = info.get("title", "Video")
             duration, width, height = get_video_metadata(final_path)
 
-            # Thumbnail
             thumb_path = os.path.join(OUTPUT_FOLDER, f"{safe_title}_thumb.jpg")
             has_thumb = extract_thumbnail(final_path, thumb_path)
 
@@ -384,7 +418,6 @@ async def callback_handler(_, query: CallbackQuery):
                 supports_streaming=True,
             )
 
-            # Cleanup
             try:
                 if os.path.exists(final_path):
                     os.remove(final_path)
@@ -395,6 +428,8 @@ async def callback_handler(_, query: CallbackQuery):
 
         await status.delete()
 
+    except asyncio.TimeoutError:
+        await safe_edit(status, f"❌ ဒေါင်းလုဒ် အချိန်ကျော်လွန်သွားပါပြီ (10 မိနစ်)။\nပြန်ကြိုးစားကြည့်ပါ။\n\n— {CREDIT}")
     except Exception as e:
         err_msg = f"{type(e).__name__}: {e}"
         await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
