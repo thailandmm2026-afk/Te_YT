@@ -47,20 +47,17 @@ def get_base_ydl_opts():
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
-        # mp4 ကို ဦးစားပေး (Telegram နဲ့ တွဲသုံးလို့ကောင်း)
+        # mp4 ကို ဦးစားပေး
         "format_sort": ["res", "ext:mp4:m4a", "codec:h264:aac", "size"],
-        "extractor_args": {
-            "youtube": {
-                # android / ios / tv ကို အရင်သုံးပြီး web ကို fallback အဖြစ်ထား
-                "player_client": ["android", "ios", "tv", "web"]
-            }
-        },
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
-    if os.path.exists(COOKIES_FILE):
+    # cookies ကို USE_COOKIES=1 ထားမှသာ သုံးမယ်
+    # (cookies ဟောင်း/expired ဖြစ်နေရင် "format is not available" error တက်တတ်)
+    use_cookies = os.environ.get("USE_COOKIES", "0").strip() in ("1", "true", "yes")
+    if use_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
         opts["cookiefile"] = COOKIES_FILE
     return opts
 
@@ -334,9 +331,9 @@ async def callback_handler(_, query: CallbackQuery):
             # Video download — format selector ကို ပြောင်းလဲအောင် ပြင်ထား
             # (ext=mp4 တင်းကျပ်စွာ မသတ်မှတ်ဘဲ fallback များများ ထည့်)
             format_map = {
-                "best": "bv*+ba/b",
-                "720": "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b",
-                "480": "bv*[height<=480]+ba/b[height<=480]/bv*+ba/b",
+                "best": "bestvideo*+bestaudio/best/bestvideo+bestaudio",
+                "720": "bestvideo*[height<=720]+bestaudio/best[height<=720]/bestvideo*+bestaudio/best",
+                "480": "bestvideo*[height<=480]+bestaudio/best[height<=480]/bestvideo*+bestaudio/best",
             }
             fmt = format_map.get(quality, format_map["best"])
 
