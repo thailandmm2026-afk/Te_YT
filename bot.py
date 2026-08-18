@@ -46,11 +46,11 @@ def get_base_ydl_opts():
     opts = {
         "quiet": True,
         "no_warnings": True,
-        "js_runtimes": {"node": None},          # node ကို ဖွင့်ပေး
-        "remote_components": ["ejs:github"],    # challenge solver ဆွဲခိုင်း
+        "js_runtimes": {"node": None},
+        "remote_components": ["ejs:github"],
         "extractor_args": {
             "youtube": {
-                "player_client": ["web", "mweb", "tv"]   # ios/android ဖယ်ထုတ်
+                "player_client": ["web", "mweb", "tv"]
             }
         },
         "http_headers": {
@@ -60,7 +60,6 @@ def get_base_ydl_opts():
     if os.path.exists(COOKIES_FILE):
         opts["cookiefile"] = COOKIES_FILE
     return opts
-
 
 
 # ──────────────────────────────────────────────
@@ -242,6 +241,7 @@ async def url_handler(_, message: Message):
     except Exception as e:
         await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
 
+
 @app.on_callback_query(filters.regex(r"^yt\|"))
 async def callback_handler(_, query: CallbackQuery):
     await query.answer()
@@ -271,7 +271,7 @@ async def callback_handler(_, query: CallbackQuery):
                     "preferredquality": "192",
                 }],
             })
-            
+
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
                 final_path = ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp3"
@@ -284,9 +284,76 @@ async def callback_handler(_, query: CallbackQuery):
                 performer="YouTube"
             )
 
-        else:
-            duration = 0
+            # Cleanup
             try:
-                ydl_opts_pre = get_base_ydl_opts()
-                with yt_dlp.YoutubeDL(ydl_opts_pre) as ydl:
-                    info_pre = ydl.extract_info(
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+            except Exception:
+                pass
+
+        else:
+            # Video download
+            format_map = {
+                "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
+                "720": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
+                "480": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best",
+            }
+            fmt = format_map.get(quality, format_map["best"])
+
+            ydl_opts = get_base_ydl_opts()
+            ydl_opts.update({
+                "format": fmt,
+                "outtmpl": out_template,
+                "merge_output_format": "mp4",
+                "progress_hooks": [make_progress_hook(status, loop, f"{quality.upper()} Downloading")],
+            })
+
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                final_path = ydl.prepare_filename(info)
+                # ensure .mp4 extension after merge
+                if not final_path.endswith(".mp4"):
+                    base = final_path.rsplit(".", 1)[0]
+                    if os.path.exists(base + ".mp4"):
+                        final_path = base + ".mp4"
+
+            title = info.get("title", "Video")
+            duration, width, height = get_video_metadata(final_path)
+
+            # Thumbnail
+            thumb_path = os.path.join(OUTPUT_FOLDER, f"{safe_title}_thumb.jpg")
+            has_thumb = extract_thumbnail(final_path, thumb_path)
+
+            await safe_edit(status, f"📤 Telegram သို့ ပို့နေပါသည်...\n\n— {CREDIT}")
+
+            await status.reply_video(
+                video=final_path,
+                caption=f"✅ **{title}**\n\n— {CREDIT}",
+                duration=duration,
+                width=width,
+                height=height,
+                thumb=thumb_path if has_thumb else None,
+                supports_streaming=True,
+            )
+
+            # Cleanup
+            try:
+                if os.path.exists(final_path):
+                    os.remove(final_path)
+                if has_thumb and os.path.exists(thumb_path):
+                    os.remove(thumb_path)
+            except Exception:
+                pass
+
+        await status.delete()
+
+    except Exception as e:
+        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
+
+
+# ──────────────────────────────────────────────
+# Run
+# ──────────────────────────────────────────────
+if __name__ == "__main__":
+    print("Bot is starting...")
+    app.run()
