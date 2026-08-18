@@ -210,10 +210,21 @@ async def url_handler(_, message: Message):
 
     try:
         ydl_opts = get_base_ydl_opts()
+        # Playlist ဖြစ်နေရင် ပထမဆုံး 1 ပုဒ်ကိုပဲ ယူရန် noplaylist ထည့်ပေးပါ
+        ydl_opts["noplaylist"] = True
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
-        title = info.get("title", "Unknown")
+        if not info:
+            await status.edit_text(f"❌ အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
+            return
+
+        # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ကို ဆွဲထုတ်ပါ
+        if "entries" in info and info["entries"]:
+            info = info["entries"][0]
+
+        title = info.get("title") or "Unknown Title"
         duration = info.get("duration") or 0
 
         h, rem = divmod(duration, 3600)
@@ -242,6 +253,7 @@ async def url_handler(_, message: Message):
         await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
 
 
+
 @app.on_callback_query(filters.regex(r"^yt\|"))
 async def callback_handler(_, query: CallbackQuery):
     await query.answer()
@@ -262,6 +274,7 @@ async def callback_handler(_, query: CallbackQuery):
         if quality == "audio":
             ydl_opts = get_base_ydl_opts()
             ydl_opts.update({
+                "noplaylist": True,  # Playlist မဟုတ်ဘဲ Single Video သာ ဆွဲရန်
                 "format": "bestaudio/best",
                 "outtmpl": out_template,
                 "progress_hooks": [make_progress_hook(status, loop, "Audio Downloading")],
@@ -274,13 +287,23 @@ async def callback_handler(_, query: CallbackQuery):
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+                
+                # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ထဲက data ကိုယူပါ
+                if info and "entries" in info:
+                    info = info["entries"][0]
+
+                # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
+                if not info:
+                    await safe_edit(status, f"❌ Video အချက်အလက်များ မရရှိပါ။\n\n— {CREDIT}")
+                    return
+
                 final_path = ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp3"
 
             await safe_edit(status, f"📤 Telegram သို့ ပို့နေပါသည်...\n\n— {CREDIT}")
             await status.reply_audio(
                 audio=final_path,
                 caption=f"✅ {info.get('title', 'Audio')}\n\n— {CREDIT}",
-                title=info.get("title"),
+                title=info.get("title", "Audio"),
                 performer="YouTube"
             )
 
@@ -302,6 +325,7 @@ async def callback_handler(_, query: CallbackQuery):
 
             ydl_opts = get_base_ydl_opts()
             ydl_opts.update({
+                "noplaylist": True,  # Playlist မဟုတ်ဘဲ Single Video သာ ဆွဲရန်
                 "format": fmt,
                 "outtmpl": out_template,
                 "merge_output_format": "mp4",
@@ -310,6 +334,16 @@ async def callback_handler(_, query: CallbackQuery):
 
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(url, download=True)
+                
+                # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ထဲက data ကိုယူပါ
+                if info and "entries" in info:
+                    info = info["entries"][0]
+
+                # NoneType Error မတက်စေရန် Safe Check ပြုလုပ်ခြင်း
+                if not info:
+                    await safe_edit(status, f"❌ Video အချက်အလက်များ မရရှိပါ။\n\n— {CREDIT}")
+                    return
+
                 final_path = ydl.prepare_filename(info)
                 # ensure .mp4 extension after merge
                 if not final_path.endswith(".mp4"):
