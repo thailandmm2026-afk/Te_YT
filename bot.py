@@ -48,14 +48,26 @@ def get_base_ydl_opts(use_cookies: bool = True):
         "no_warnings": True,
         "nocheckcertificate": True,
         "socket_timeout": 30,
-        "retries": 3,
-        "fragment_retries": 3,
+        "retries": 5,
+        "fragment_retries": 5,
         "format_sort": ["res", "ext:mp4:m4a", "codec:h264:aac", "size"],
+        # web/mweb က cookies ကို လေးစားတယ် (ios က ignore လုပ်)
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["web", "mweb", "android", "tv"],
+            }
+        },
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
+    # Node ရှိရင် JS challenge / PO token အတွက် သုံး
+    import shutil
+    if shutil.which("node"):
+        opts["js_runtimes"] = {"node": None}
+        opts["remote_components"] = ["ejs:github"]
+
     env_cookies = os.environ.get("USE_COOKIES", "1").strip().lower() not in ("0", "false", "no")
     if use_cookies and env_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
         opts["cookiefile"] = COOKIES_FILE
