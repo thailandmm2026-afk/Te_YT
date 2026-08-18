@@ -220,9 +220,13 @@ async def url_handler(_, message: Message):
             await status.edit_text(f"❌ အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
             return
 
-        # Playlist entry ဖြစ်နေပါက ပထမဆုံး video ကို ဆွဲထုတ်ပါ
+        # Playlist entry ဖြစ်နေပါက None မဟုတ်တဲ့ ပထမဆုံး video ကို ဆွဲထုတ်ပါ
         if "entries" in info and info["entries"]:
-            info = info["entries"][0]
+            info = next((e for e in info["entries"] if e is not None), None)
+
+        if not info:
+            await status.edit_text(f"❌ အချက်အလက် မရရှိပါ။\n\n— {CREDIT}")
+            return
 
         title = info.get("title") or "Unknown Title"
         duration = info.get("duration") or 0
