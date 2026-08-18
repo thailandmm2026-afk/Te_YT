@@ -46,14 +46,15 @@ def get_base_ydl_opts():
     opts = {
         "quiet": True,
         "no_warnings": True,
+        "js_runtimes": {"node": None},          # node ကို ဖွင့်ပေး
+        "remote_components": ["ejs:github"],    # challenge solver ဆွဲခိုင်း
         "extractor_args": {
             "youtube": {
-                # web / tv_embedded / mweb စသည်ဖြင့် အစားထိုးစမ်းကြည့်နိုင်ပါသည်
-                "player_client": ["ios", "android", "mweb"]
+                "player_client": ["web", "mweb", "tv"]   # ios/android ဖယ်ထုတ်
             }
         },
         "http_headers": {
-            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         }
     }
     if os.path.exists(COOKIES_FILE):
@@ -288,74 +289,4 @@ async def callback_handler(_, query: CallbackQuery):
             try:
                 ydl_opts_pre = get_base_ydl_opts()
                 with yt_dlp.YoutubeDL(ydl_opts_pre) as ydl:
-                    info_pre = ydl.extract_info(url, download=False)
-                    duration = info_pre.get("duration") or 0
-            except Exception:
-                pass
-
-            if quality == "480" or duration > 3600:
-                fmt = "best[height<=480][ext=mp4]/best[height<=480]/best[ext=mp4]/best"
-                label = "480p Video"
-            elif quality == "720":
-                fmt = "best[height<=720][ext=mp4]/best[height<=720]/best[ext=mp4]/best"
-                label = "720p Video"
-            else:
-                fmt = "best[height<=1080][ext=mp4]/best[height<=1080]/best[ext=mp4]/best"
-                label = "Best Video"
-
-            ydl_opts = get_base_ydl_opts()
-            ydl_opts.update({
-                "format": fmt,
-                "outtmpl": out_template,
-                "progress_hooks": [make_progress_hook(status, loop, f"{label} Downloading")],
-                "concurrent_fragment_downloads": 5,
-                "http_chunk_size": 10485760,
-            })
-
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=True)
-                final_path = ydl.prepare_filename(info)
-
-            # Thumbnail
-            thumb_path = final_path + ".jpg"
-            has_thumb = extract_thumbnail(final_path, thumb_path)
-
-            duration, width, height = get_video_metadata(final_path)
-
-            await safe_edit(status, f"📤 Telegram သို့ ပို့နေပါသည်...\n\n— {CREDIT}")
-
-            await status.reply_video(
-                video=final_path,
-                caption=f"✅ {info.get('title', 'Video')}\n\n— {CREDIT}",
-                duration=duration,
-                width=width,
-                height=height,
-                thumb=thumb_path if has_thumb else None,
-                supports_streaming=True,
-            )
-
-            if has_thumb and os.path.exists(thumb_path):
-                os.remove(thumb_path)
-
-        # Cleanup
-        if os.path.exists(final_path):
-            os.remove(final_path)
-
-        await safe_edit(status, f"✅ ပြီးဆုံးပါပြီ။\n\n— {CREDIT}")
-
-    except Exception as e:
-        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{e}`\n\n— {CREDIT}")
-
-@app.on_message(filters.command("help"))
-async def help_handler(_, message: Message):
-    await message.reply_text(
-        "📖 **အသုံးပြုနည်း**\n\n"
-        "1️⃣ YouTube လင့်ခ်ပို့ပါ\n"
-        "2️⃣ အရည်အသွေး ရွေးပါ (480p က အမြန်ဆုံး)\n"
-        "3️⃣ Progress bar နဲ့ ဒေါင်းလုဒ်လုပ်ပေးပါမယ်\n\n"
-        f"— {CREDIT}"
-    )
-
-if __name__ == "__main__":
-    print("YouTube Bot is running...")
-    app.run()
+                    info_pre = ydl.extract_info(
