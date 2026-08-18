@@ -57,8 +57,9 @@ def get_base_ydl_opts():
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
-    # cookies ကို USE_COOKIES=1 ထားမှသာ သုံးမယ်
-    use_cookies = os.environ.get("USE_COOKIES", "0").strip() in ("1", "true", "yes")
+    # cookies.txt ရှိရင် အလိုအလျောက် သုံးမယ်
+    # (YouTube bot check ကျော်ဖို့ လိုအပ်) — မသုံးချင်ရင် USE_COOKIES=0 ထား
+    use_cookies = os.environ.get("USE_COOKIES", "1").strip().lower() not in ("0", "false", "no")
     if use_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
         opts["cookiefile"] = COOKIES_FILE
     return opts
@@ -74,6 +75,32 @@ def _download_sync(ydl_opts: dict, url: str):
             return None, None
         path = ydl.prepare_filename(info)
         return info, path
+
+
+def friendly_error(e: Exception) -> str:
+    """YouTube error တွေကို မြန်မာလို ရှင်းပြ"""
+    msg = str(e)
+    low = msg.lower()
+    if "sign in to confirm" in low or "not a bot" in low:
+        return (
+            "YouTube က Bot လို့ သတ်မှတ်လိုက်ပါပြီ။\n\n"
+            "ဖြေရှင်းနည်း:\n"
+            "1️⃣ Browser မှာ youtube.com login လုပ်ပါ\n"
+            "2️⃣ cookies.txt အသစ် ထုတ်ပါ\n"
+            "3️⃣ bot folder ထဲ အစားထိုးပါ\n"
+            "4️⃣ Bot ပြန်စပါ\n\n"
+            f"({type(e).__name__})"
+        )
+    if "format is not available" in low:
+        return (
+            "Video format မရရှိပါ။\n"
+            "cookies.txt သက်တမ်းကုန်နေနိုင်ပါတယ်။\n"
+            "cookies အသစ် ထုတ်ပြီး ပြန်စမ်းပါ။\n\n"
+            f"({type(e).__name__})"
+        )
+    if "private video" in low or "unavailable" in low:
+        return f"ဒီ video ကို ကြည့်လို့ မရပါ။\n(private / deleted / region-blocked)\n\n({type(e).__name__})"
+    return f"{type(e).__name__}: {e}"
 
 
 # ──────────────────────────────────────────────
@@ -280,8 +307,7 @@ async def url_handler(_, message: Message):
     except asyncio.TimeoutError:
         await status.edit_text(f"❌ အချက်အလက် ရယူရာတွင် အချိန်ကျော်လွန်သွားပါပြီ။\nပြန်ကြိုးစားကြည့်ပါ။\n\n— {CREDIT}")
     except Exception as e:
-        err_msg = f"{type(e).__name__}: {e}"
-        await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
+        await status.edit_text(f"❌ အမှားဖြစ်သွားပါပြီ။\n\n{friendly_error(e)}\n\n— {CREDIT}")
 
 
 
@@ -431,8 +457,7 @@ async def callback_handler(_, query: CallbackQuery):
     except asyncio.TimeoutError:
         await safe_edit(status, f"❌ ဒေါင်းလုဒ် အချိန်ကျော်လွန်သွားပါပြီ (10 မိနစ်)။\nပြန်ကြိုးစားကြည့်ပါ။\n\n— {CREDIT}")
     except Exception as e:
-        err_msg = f"{type(e).__name__}: {e}"
-        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n`{err_msg}`\n\n— {CREDIT}")
+        await safe_edit(status, f"❌ အမှားဖြစ်သွားပါပြီ။\n\n{friendly_error(e)}\n\n— {CREDIT}")
 
 
 # ──────────────────────────────────────────────
