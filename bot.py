@@ -47,6 +47,8 @@ def get_base_ydl_opts():
         "quiet": True,
         "no_warnings": True,
         "nocheckcertificate": True,
+        # mp4 ကို ဦးစားပေး (Telegram နဲ့ တွဲသုံးလို့ကောင်း)
+        "format_sort": ["res", "ext:mp4:m4a", "codec:h264:aac", "size"],
         "extractor_args": {
             "youtube": {
                 # android / ios / tv ကို အရင်သုံးပြီး web ကို fallback အဖြစ်ထား
@@ -288,7 +290,7 @@ async def callback_handler(_, query: CallbackQuery):
         if quality == "audio":
             ydl_opts = get_base_ydl_opts()
             ydl_opts.update({
-                "noplaylist": True,  # Playlist မဟုတ်ဘဲ Single Video သာ ဆွဲရန်
+                "noplaylist": True,
                 "format": "bestaudio/best",
                 "outtmpl": out_template,
                 "progress_hooks": [make_progress_hook(status, loop, "Audio Downloading")],
@@ -329,17 +331,18 @@ async def callback_handler(_, query: CallbackQuery):
                 pass
 
         else:
-            # Video download
+            # Video download — format selector ကို ပြောင်းလဲအောင် ပြင်ထား
+            # (ext=mp4 တင်းကျပ်စွာ မသတ်မှတ်ဘဲ fallback များများ ထည့်)
             format_map = {
-                "best": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-                "720": "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/best",
-                "480": "bestvideo[height<=480][ext=mp4]+bestaudio[ext=m4a]/best[height<=480][ext=mp4]/best",
+                "best": "bv*+ba/b",
+                "720": "bv*[height<=720]+ba/b[height<=720]/bv*+ba/b",
+                "480": "bv*[height<=480]+ba/b[height<=480]/bv*+ba/b",
             }
             fmt = format_map.get(quality, format_map["best"])
 
             ydl_opts = get_base_ydl_opts()
             ydl_opts.update({
-                "noplaylist": True,  # Playlist မဟုတ်ဘဲ Single Video သာ ဆွဲရန်
+                "noplaylist": True,
                 "format": fmt,
                 "outtmpl": out_template,
                 "merge_output_format": "mp4",
