@@ -42,7 +42,7 @@ app = Client(
 # ──────────────────────────────────────────────
 # Helper function for ydl options
 # ──────────────────────────────────────────────
-def get_base_ydl_opts():
+def get_base_ydl_opts(use_cookies: bool = True):
     opts = {
         "quiet": True,
         "no_warnings": True,
@@ -50,23 +50,19 @@ def get_base_ydl_opts():
         "socket_timeout": 30,
         "retries": 3,
         "fragment_retries": 3,
-        # mp4 ကို ဦးစားပေး
         "format_sort": ["res", "ext:mp4:m4a", "codec:h264:aac", "size"],
         "http_headers": {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
             "Accept-Language": "en-US,en;q=0.9",
         },
     }
-    # cookies.txt ရှိရင် အလိုအလျောက် သုံးမယ်
-    # (YouTube bot check ကျော်ဖို့ လိုအပ်) — မသုံးချင်ရင် USE_COOKIES=0 ထား
-    use_cookies = os.environ.get("USE_COOKIES", "1").strip().lower() not in ("0", "false", "no")
-    if use_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
+    env_cookies = os.environ.get("USE_COOKIES", "1").strip().lower() not in ("0", "false", "no")
+    if use_cookies and env_cookies and os.path.exists(COOKIES_FILE) and os.path.getsize(COOKIES_FILE) > 100:
         opts["cookiefile"] = COOKIES_FILE
     return opts
 
 
-def _download_sync(ydl_opts: dict, url: str):
-    """Blocking yt-dlp download — thread pool ထဲမှာ ခေါ်သုံးရန်"""
+def _run_ydl(ydl_opts: dict, url: str):
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
         info = ydl.extract_info(url, download=True)
         if info and "entries" in info:
@@ -75,6 +71,66 @@ def _download_sync(ydl_opts: dict, url: str):
             return None, None
         path = ydl.prepare_filename(info)
         return info, path
+
+
+def _download_sync(ydl_opts: dict, url: str):
+    """
+    Download with automatic fallback:
+    1) requested format + cookies
+    2) looser format + cookies
+    3) looser format without cookies
+    """
+    original_fmt = ydl_opts.get("format", "best")
+    fallback_formats = [
+        original_fmt,
+        "bestvideo*+bestaudio/best/bestvideo+bestaudio/best",
+        "best/18/worst",
+    ]
+    # unique while preserving order
+    seen = set()
+    formats = []
+    for f in fallback_formats:
+        if f not in seen:
+            seen.add(f)
+            formats.append(f)
+
+    last_err = None
+
+    # Pass 1: with cookies (if configured)
+    for fmt in formats:
+        opts = dict(ydl_opts)
+        opts["format"] = fmt
+        try:
+            return _run_ydl(opts, url)
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            # format/cookies issues → try next
+            if "format is not available" in msg or "only images" in msg:
+                continue
+            # bot check / other hard errors → break to retry without cookies
+            if "sign in to confirm" in msg or "not a bot" in msg:
+                break
+            # other errors: still try next format once
+            continue
+
+    # Pass 2: without cookies
+    for fmt in formats:
+        opts = dict(ydl_opts)
+        opts.pop("cookiefile", None)
+        opts["format"] = fmt
+        try:
+            return _run_ydl(opts, url)
+        except Exception as e:
+            last_err = e
+            msg = str(e).lower()
+            if "format is not available" in msg or "only images" in msg:
+                continue
+            raise
+
+    if last_err:
+        raise last_err
+    return None, None
 
 
 def friendly_error(e: Exception) -> str:
@@ -91,11 +147,16 @@ def friendly_error(e: Exception) -> str:
             "4️⃣ Bot ပြန်စပါ\n\n"
             f"({type(e).__name__})"
         )
-    if "format is not available" in low:
+    if "format is not available" in low or "only images" in low:
         return (
-            "Video format မရရှိပါ။\n"
-            "cookies.txt သက်တမ်းကုန်နေနိုင်ပါတယ်။\n"
-            "cookies အသစ် ထုတ်ပြီး ပြန်စမ်းပါ။\n\n"
+            "Video format မရရှိပါ။\n\n"
+            "ဖြစ်နိုင်တဲ့ အကြောင်းရင်း:\n"
+            "• cookies.txt သက်တမ်းကုန် / မမှန်ကန်\n"
+            "• Server IP ကို YouTube က block လုပ်ထား\n\n"
+            "လုပ်ရမယ့်အရာ:\n"
+            "1️⃣ youtube.com မှာ login ပြီး cookies အသစ် ထုတ်\n"
+            "2️⃣ Netscape format ဖြစ်အောင် သေချာ export လုပ်\n"
+            "3️⃣ cookies.txt အစားထိုးပြီး bot ပြန်စ\n\n"
             f"({type(e).__name__})"
         )
     if "private video" in low or "unavailable" in low:
@@ -250,14 +311,24 @@ async def start_handler(_, message: Message):
 
 
 def _extract_info_sync(url: str):
-    """Blocking extract_info — thread pool ထဲမှာ ခေါ်သုံးရန်"""
-    ydl_opts = get_base_ydl_opts()
-    ydl_opts["noplaylist"] = True
-    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-        info = ydl.extract_info(url, download=False)
-    if info and "entries" in info and info["entries"]:
-        info = next((e for e in info["entries"] if e is not None), None)
-    return info
+    """Blocking extract_info — cookies fail ရင် cookies မပါဘဲ ပြန်စမ်း"""
+    last_err = None
+    for use_cookies in (True, False):
+        ydl_opts = get_base_ydl_opts(use_cookies=use_cookies)
+        ydl_opts["noplaylist"] = True
+        try:
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+            if info and "entries" in info and info["entries"]:
+                info = next((e for e in info["entries"] if e is not None), None)
+            if info:
+                return info
+        except Exception as e:
+            last_err = e
+            continue
+    if last_err:
+        raise last_err
+    return None
 
 
 @app.on_message(filters.text & ~filters.command(["start", "help"]))
